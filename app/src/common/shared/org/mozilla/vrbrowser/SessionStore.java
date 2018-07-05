@@ -13,6 +13,7 @@ import android.view.inputmethod.CursorAnchorInfo;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 
+import org.mozilla.gecko.PrefsHelper;
 import org.mozilla.geckoview.GeckoResponse;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
@@ -38,7 +39,8 @@ public class SessionStore implements GeckoSession.NavigationDelegate, GeckoSessi
         }
         return mInstance;
     }
-    public static final String DEFAULT_URL = "resource://android/assets/html/index.html";
+
+    public static final String DEFAULT_URL = "resource://android/assets/webvr/03-vr-presentation.html";
     public static final String ERROR_URL = "resource://android/assets/html/error.html";
 
     public static final String NET_ERROR = "about:neterror";
@@ -96,6 +98,9 @@ public class SessionStore implements GeckoSession.NavigationDelegate, GeckoSessi
                     GeckoSession.TrackingProtectionDelegate.CATEGORY_CONTENT);
 
             mRuntime = GeckoRuntime.create(aContext, runtimeSettingsBuilder.build());
+            PrefsHelper.setPref("dom.vr.enabled", true);
+            PrefsHelper.setPref("dom.vr.external.enabled", true);
+            PrefsHelper.setPref("webgl.enable-surface-texture", true);
         } else {
             mRuntime.attachTo(aContext);
         }
@@ -211,7 +216,7 @@ public class SessionStore implements GeckoSession.NavigationDelegate, GeckoSessi
     }
 
     public static class SessionSettings {
-        public boolean multiprocess = true;
+        public boolean multiprocess = false;
         public boolean privateMode = false;
         public boolean trackingProtection = true;
     }
