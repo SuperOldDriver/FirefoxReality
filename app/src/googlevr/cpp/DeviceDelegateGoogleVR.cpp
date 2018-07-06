@@ -407,7 +407,7 @@ DeviceDelegateGoogleVR::GetControllerModelName(const int32_t aModelIndex) const 
 
 void
 DeviceDelegateGoogleVR::ProcessEvents() {
-  static const vrb::Vector kAverageHeight(0.0f, 0.0f, 0.0f);
+  static const vrb::Vector kAverageHeight(0.0f, 1.7f, 0.0f);
   gvr_clock_time_point when = GVR_CHECK(gvr_get_time_point_now());
   // 50ms into the future is what GVR docs recommends using for head rotation prediction.
   when.monotonic_system_time_nanos += 50000000;
@@ -417,7 +417,9 @@ DeviceDelegateGoogleVR::ProcessEvents() {
   }
   m.headMatrix = vrb::Matrix::FromRowMajor(m.gvrHeadMatrix.m);
   m.headMatrix = m.headMatrix.Inverse();
-  m.headMatrix.TranslateInPlace(kAverageHeight);
+  if (m.renderMode == device::RenderMode::StandAlone) {
+    m.headMatrix.TranslateInPlace(kAverageHeight);
+  }
   m.UpdateCameras();
   m.UpdateControllers();
 }

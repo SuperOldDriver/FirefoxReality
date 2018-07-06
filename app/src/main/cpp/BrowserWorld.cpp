@@ -371,9 +371,10 @@ struct BrowserWorld::State {
   bool windowsInitialized;
   TransformPtr skybox;
   FadeBlitterPtr fadeBlitter;
+  bool exitImmersiveRequested;
 
   State() : paused(true), glInitialized(false), env(nullptr), nearClip(0.1f),
-            farClip(100.0f), activity(nullptr), windowsInitialized(false) {
+            farClip(100.0f), activity(nullptr), windowsInitialized(false), exitImmersiveRequested(false) {
     context = RenderContext::Create();
     create = context->GetRenderThreadCreationContext();
     loader = ModelLoaderAndroid::Create(context);
@@ -729,6 +730,12 @@ BrowserWorld::Draw() {
   bool updateWidgets = false;
   m.UpdateControllers(updateWidgets);
   m.externalVR->PullBrowserState();
+  if (m.exitImmersiveRequested && m.externalVR->IsPresenting()) {
+    m.externalVR->StopPresenting();
+    m.blitter->StopPresenting();
+    VRBrowser::ResumeCompositor();
+    m.exitImmersiveRequested = false;
+  }
   if (m.externalVR->IsPresenting()) {
     DrawImmersive();
   } else {
@@ -899,6 +906,11 @@ BrowserWorld::FadeIn() {
   m.fadeBlitter->FadeIn();
 }
 
+void
+BrowserWorld::ExitImmersive() {
+  m.exitImmersiveRequested = true;
+}
+
 JNIEnv*
 BrowserWorld::GetJNIEnv() const {
   return m.env;
@@ -975,7 +987,7 @@ BrowserWorld::DrawImmersive() {
   int32_t surfaceHandle = 0;
   device::EyeRect leftEye, rightEye;
   m.externalVR->GetFrameResult(surfaceHandle, leftEye, rightEye);
-  m.blitter->Update(surfaceHandle, leftEye, rightEye);
+  m.blitter->StartFrame(surfaceHandle, leftEye, rightEye);
   m.device->BindEye(device::Eye::Left);
   m.blitter->Draw(device::Eye::Left);
 #if !defined(VRBROWSER_NO_VR_API)
@@ -983,7 +995,7 @@ BrowserWorld::DrawImmersive() {
   m.blitter->Draw(device::Eye::Right);
 #endif // !defined(VRBROWSER_NO_VR_API)
   m.device->EndFrame();
-  m.blitter->Finish();
+  m.blitter->EndFrame();
 }
 
 vrb::TransformPtr
@@ -1196,6 +1208,11 @@ JNI_METHOD(void, fadeOutWorldNative)
 JNI_METHOD(void, fadeInWorldNative)
 (JNIEnv* aEnv, jobject) {
   crow::BrowserWorld::Instance().FadeIn();
+}
+
+JNI_METHOD(void, exitImmersiveNative)
+(JNIEnv* aEnv, jobject) {
+  crow::BrowserWorld::Instance().ExitImmersive();
 }
 
 } // extern "C"

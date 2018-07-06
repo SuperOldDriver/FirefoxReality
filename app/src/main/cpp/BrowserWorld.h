@@ -45,6 +45,7 @@ public:
   void UpdateVisibleWidgets();
   void FadeOut();
   void FadeIn();
+  void ExitImmersive();
   JNIEnv* GetJNIEnv() const;
 protected:
   struct State;

@@ -21,9 +21,10 @@ typedef std::shared_ptr<ExternalBlitter> ExternalBlitterPtr;
 class ExternalBlitter : protected vrb::ResourceGL {
 public:
   static ExternalBlitterPtr Create(vrb::CreationContextPtr& aContext);
-  void Update(const int32_t aSurfaceHandle, const device::EyeRect& aLeftEye, const device::EyeRect& aRightEye);
+  void StartFrame(const int32_t aSurfaceHandle, const device::EyeRect& aLeftEye, const device::EyeRect& aRightEye);
   void Draw(const device::Eye aEye);
-  void Finish();
+  void EndFrame();
+  void StopPresenting();
 protected:
   struct State;
   ExternalBlitter(State& aState, vrb::CreationContextPtr& aContext);

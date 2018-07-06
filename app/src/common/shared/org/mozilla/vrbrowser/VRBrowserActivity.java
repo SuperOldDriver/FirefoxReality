@@ -12,6 +12,7 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.support.annotation.Keep;
 import android.util.Log;
 import android.view.View;
@@ -79,7 +80,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     LinkedList<WidgetManagerDelegate.Listener> mWidgetEventListeners;
     LinkedList<Runnable> mBackHandlers;
     SettingsWidget mSettingsWidget;
-    private boolean mWasBrowserPressed = false;
+    private boolean mIsPresentingImmersive = false;
     int mPreviousSessionId = SessionStore.NO_SESSION_ID;
     private Thread mUiThread;
 
@@ -225,6 +226,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     public void onBackPressed() {
+        if (mIsPresentingImmersive) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    exitImmersiveNative();
+                }
+            });
+            return;
+        }
         if (mBackHandlers.size() > 0) {
             mBackHandlers.getLast().run();
             return;
@@ -386,6 +396,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (Thread.currentThread() == mUiThread) {
             return;
         }
+        mIsPresentingImmersive = true;
         PauseCompositorRunnable runnable = new PauseCompositorRunnable();
 
         synchronized (this) {
@@ -402,15 +413,21 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Keep
     void resumeGeckoViewCompositor() {
-        runOnUiThread(new Runnable() {
+        if (Thread.currentThread() == mUiThread) {
+            return;
+        }
+        mIsPresentingImmersive = false;
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (mBrowserWidget != null) {
                     mBrowserWidget.resumeCompositor();
+                    Log.e(LOGTAG, "Compositor Resumed");
+                }
             }
-        }});
+        }, 10);
     }
-
 
     void createOffscreenDisplay() {
         int[] ids = new int[1];
@@ -665,5 +682,5 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private native void finishWidgetResizeNative(int aHandle);
     private native void fadeOutWorldNative();
     private native void fadeInWorldNative();
-
+    private native void exitImmersiveNative();
 }

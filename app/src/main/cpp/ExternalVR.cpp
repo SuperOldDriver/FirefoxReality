@@ -131,6 +131,7 @@ struct ExternalVR::State {
   device::CapabilityFlags deviceCapabilities;
   vrb::Vector eyeOffsets[device::EyeCount];
   uint64_t lastFrameId;
+  bool mWaitingForStop;
 
   State() : deviceCapabilities(0) {
     memset(&data, 0, sizeof(mozilla::gfx::VRExternalShmem));
@@ -149,6 +150,7 @@ struct ExternalVR::State {
     memcpy(&(system.sensorState.leftViewMatrix), identity.Data(), sizeof(system.sensorState.leftViewMatrix));
     memcpy(&(system.sensorState.rightViewMatrix), identity.Data(), sizeof(system.sensorState.rightViewMatrix));
     lastFrameId = 0;
+    mWaitingForStop = false;
   }
 
   ~State() {
@@ -253,6 +255,10 @@ ExternalVR::PullBrowserState() {
   if (lock.IsLocked()) {
     memcpy(&(m.browser), &(m.data.browserState), sizeof(mozilla::gfx::VRBrowserState));
   }
+  if (m.mWaitingForStop && (m.browser.layerState[0].type != mozilla::gfx::VRLayerType::LayerType_Stereo_Immersive)) {
+    m.mWaitingForStop = false;
+    m.lastFrameId = m.browser.layerState[0].layer_stereo_immersive.mFrameId;
+  }
 }
 
 bool
@@ -263,16 +269,19 @@ ExternalVR::IsFirstPresentingFrame() const {
 bool
 ExternalVR::IsPresenting() const {
   // VRB_LOG("IsPresenting=%s",((m.browser.layerState[0].type == mozilla::gfx::VRLayerType::LayerType_Stereo_Immersive)?"TRUE":"FALSE"));
-  return (m.browser.layerState[0].type == mozilla::gfx::VRLayerType::LayerType_Stereo_Immersive);
+  return !m.mWaitingForStop && (m.browser.layerState[0].type == mozilla::gfx::VRLayerType::LayerType_Stereo_Immersive);
 }
 
 void
 ExternalVR::RequestFrame(const vrb::Matrix& aHeadTransform) {
-  memcpy(&(m.system.sensorState.orientation), vrb::Quaternion(aHeadTransform).Data(),
+  vrb::Quaternion quaternion(aHeadTransform);
+  vrb::Vector translation = aHeadTransform.GetTranslation();
+  memcpy(&(m.system.sensorState.orientation), quaternion.Data(),
          sizeof(m.system.sensorState.orientation));
-  memcpy(&(m.system.sensorState.position), aHeadTransform.GetTranslation().Data(),
+  memcpy(&(m.system.sensorState.position), translation.Data(),
          sizeof(m.system.sensorState.position));
   m.system.sensorState.inputFrameID++;
+  m.system.displayState.mLastSubmittedFrameId = m.lastFrameId;
 
   vrb::Matrix leftView = vrb::Matrix::Position(m.eyeOffsets[device::EyeIndex(device::Eye::Left)]).PostMultiply(aHeadTransform);
   leftView = vrb::Matrix::FromRowMajor(leftView.Data());
@@ -284,26 +293,25 @@ ExternalVR::RequestFrame(const vrb::Matrix& aHeadTransform) {
          sizeof(m.system.sensorState.rightViewMatrix));
 
   PushSystemState();
-  SignalCond(m.data.browserMutex, m.data.browserCond);
   Wait wait(m.data.browserMutex, m.data.browserCond);
-  bool done = false;
-  while (!done) {
+  wait.Lock();
+  memcpy(&(m.browser), &(m.data.browserState), sizeof(mozilla::gfx::VRBrowserState));
+  while (true) {
+    if (m.browser.layerState[0].layer_stereo_immersive.mFrameId != m.lastFrameId) {
+      m.system.displayState.mLastSubmittedFrameSuccessful = m.browser.layerState[0].layer_stereo_immersive.mFrameId != 0;
+      m.system.displayState.mLastSubmittedFrameId = m.browser.layerState[0].layer_stereo_immersive.mFrameId;
+      break;
+    }
     // VRB_LOG("RequestFrame ABOUT TO WAIT FOR FRAME");
     wait.DoWait();
     // VRB_LOG("RequestFrame DONE TO WAIT FOR FRAME");
     memcpy(&(m.browser), &(m.data.browserState), sizeof(mozilla::gfx::VRBrowserState));
     // VRB_LOG("RequestFrame m.browser.layerState[0].layer_stereo_immersive.mInputFrameId=%llu m.system.sensorState.inputFrameID=%llu", m.browser.layerState[0].layer_stereo_immersive.mInputFrameId, m.system.sensorState.inputFrameID);
     // VRB_LOG("RequestFrame m.browser.layerState[0].layer_stereo_immersive.mFrameId=%llu", m.browser.layerState[0].layer_stereo_immersive.mFrameId);
-    if (m.browser.layerState[0].layer_stereo_immersive.mFrameId != m.lastFrameId) {
-      done = true;
-      m.system.displayState.mLastSubmittedFrameId = m.browser.layerState[0].layer_stereo_immersive.mFrameId;
-      m.system.displayState.mLastSubmittedFrameSuccessful = m.browser.layerState[0].layer_stereo_immersive.mFrameId != 0;;
-    }
   }
-  m.system.sensorState.inputFrameID++;
   m.lastFrameId = m.browser.layerState[0].layer_stereo_immersive.mFrameId;
   wait.Unlock();
-  //PushSystemState();
+  // PushSystemState();
 }
 
 void
@@ -325,6 +333,8 @@ ExternalVR::GetFrameResult(int32_t& aSurfaceHandle, device::EyeRect& aLeftEye, d
 void
 ExternalVR::StopPresenting() {
   m.system.displayState.mPresentingGeneration++;
+  m.mWaitingForStop = true;
+  PushSystemState();
 }
 
 ExternalVR::ExternalVR(State& aState) : m(aState) {

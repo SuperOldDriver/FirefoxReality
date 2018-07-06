@@ -209,7 +209,9 @@ GeckoSurfaceTexture::~GeckoSurfaceTexture() {
   if (m.surface) {
     VRB_LOG("**** DESTROY GeckoSurfaceTexture");
     ReleaseTexImage();
-    DetachFromGLContext();
+    if (IsAttachedToGLContext(eglGetCurrentContext())) {
+      DetachFromGLContext();
+    }
     DecrementUse();
   }
   m.Shutdown();
